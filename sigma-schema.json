@@ -1,0 +1,33 @@
+cat > sigma-schema.json << 'EOF'
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "title": "Sigma Rule Schema",
+  "type": "object",
+  "required": ["title", "logsource", "detection"],
+  "properties": {
+    "title": {"type": "string"},
+    "status": {"type": "string", "enum": ["stable", "test", "experimental", "deprecated", "unsupported"]},
+    "description": {"type": "string"},
+    "author": {"type": "string"},
+    "date": {"type": "string"},
+    "logsource": {
+      "type": "object",
+      "properties": {
+        "category": {"type": "string"},
+        "product": {"type": "string"},
+        "service": {"type": "string"}
+      }
+    },
+    "detection": {
+      "type": "object",
+      "required": ["condition"],
+      "properties": {
+        "condition": {"type": ["string", "array"]}
+      }
+    },
+    "level": {"type": "string", "enum": ["informational", "low", "medium", "high", "critical"]},
+    "tags": {"type": "array", "items": {"type": "string"}},
+    "falsepositives": {"type": ["array", "string"]}
+  }
+}
+EOF
