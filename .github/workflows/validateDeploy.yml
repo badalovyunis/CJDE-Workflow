@@ -7,17 +7,19 @@ on:
   pull_request:
     paths:
       - "rules/**.yml"
+  # Manual trigger
   workflow_dispatch:
 
 jobs:
+  # Step 1: Validate Sigma rules
   validate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
-          fetch-depth: 2
-
+          fetch-depth: 2  # Need to fetch more than one commit to compare changes
+        
       - name: Validate Sigma rules
         uses: SigmaHQ/sigma-rules-validator@v1
         with:
@@ -25,70 +27,92 @@ jobs:
             ./rules
           schemaFile: ${{ github.workspace }}/sigma-schema.json
 
+  # Step 2: Convert and deploy only changed rules
   convert-and-deploy:
     needs: validate
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
-          fetch-depth: 2
-
+          fetch-depth: 2  # Need to fetch more than one commit to compare changes
+        
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-
+      
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install sigma-cli requests
           sigma plugin install splunk
-
+      
       - name: Find Changed Files
         id: changed-files
         run: |
+          # Get the list of modified or added .yml files in the rules directory from the latest commit
           CHANGED_FILES=$(git diff --name-only HEAD^ HEAD -- rules/ | grep "\.yml$" || echo "")
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
           echo "changed_files=$CHANGED_FILES" >> $GITHUB_OUTPUT
-
-      - name: Convert and Deploy
+      
+      - name: Convert and Deploy Changed Sigma Rules
         run: |
+          # If no files were changed, exit with success
           if [ -z "${{ steps.changed-files.outputs.changed_files }}" ]; then
-            echo "Dəyişən fayl yoxdur."
+            echo "No Sigma rules were modified in this commit."
             exit 0
           fi
-
-          success=0
-          failure=0
-
+          
+          # Process each changed Sigma rule
+          success_count=0
+          failure_count=0
+          
           for file in ${{ steps.changed-files.outputs.changed_files }}; do
             rule_name=$(basename "$file" .yml)
-            echo "İşlənir: $file"
-
+            echo "------------------------------------"
+            echo "Processing $file (rule: $rule_name)"
+            
+            # Convert the rule to SPL
+            echo "Converting to Splunk SPL..."
             spl_query=$(sigma convert -t splunk -f default "$file" --without-pipeline)
-
+            
             if [ -z "$spl_query" ]; then
-              echo "✗ SPL query yaranmadı: $file"
-              failure=$((failure + 1))
+              echo "× ERROR: Empty SPL query generated for $file"
+              failure_count=$((failure_count + 1))
               continue
             fi
-
+            
+            echo "✓ SPL query generated successfully"
+            
+            # Deploy the rule directly to Splunk
+            echo "Deploying to Splunk..."
             python scripts/deploy_to_splunk.py \
               --url "$SPLUNK_URL" \
               --token "$SPLUNK_TOKEN" \
               --rule "$rule_name" \
               --query "$spl_query" \
               --actions "log"
-
-            if [ $? -eq 0 ]; then
-              success=$((success + 1))
+            
+            deploy_status=$?
+            if [ $deploy_status -eq 0 ]; then
+              echo "✓ Rule deployed successfully to Splunk"
+              success_count=$((success_count + 1))
             else
-              failure=$((failure + 1))
+              echo "× ERROR: Failed to deploy rule to Splunk"
+              failure_count=$((failure_count + 1))
             fi
+            
+            echo "------------------------------------"
           done
-
-          echo "Uğurlu: $success | Uğursuz: $failure"
+          
+          echo "Conversion and deployment complete:"
+          echo "Success: $success_count rules"
+          echo "Failures: $failure_count rules"
+          
+          # Always exit with success
           exit 0
         shell: bash
         env:
