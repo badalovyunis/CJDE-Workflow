@@ -1,6 +1,6 @@
-title: Test Detection Rule
+title: Test Whoami Detection
 status: test
-description: First Test
+description: Detects whoami command execution
 logsource:
     category: process_creation
     product: windows
