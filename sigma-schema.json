@@ -1,4 +1,3 @@
-cat > sigma-schema.json << 'EOF'
 {
   "$schema": "http://json-schema.org/draft-07/schema",
   "title": "Sigma Rule Schema",
@@ -30,4 +29,3 @@ cat > sigma-schema.json << 'EOF'
     "falsepositives": {"type": ["array", "string"]}
   }
 }
-EOF
